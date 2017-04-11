@@ -715,29 +715,11 @@ static u64 sched_vslice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 }
 
 #ifdef CONFIG_SMP
+
+#include "sched-pelt.h"
+
 static int select_idle_sibling(struct task_struct *p, int prev_cpu, int cpu);
 static unsigned long task_h_load(struct task_struct *p);
-
-/*
- * We choose a half-life close to 1 scheduling period.
- * Note: The tables runnable_avg_yN_inv and runnable_avg_yN_sum are
- * dependent on this value.
- */
-#ifdef CONFIG_PELT_HALFLIFE_32
-#define LOAD_AVG_PERIOD 32
-#define LOAD_AVG_MAX 47742 /* maximum possible load avg */
-#define LOAD_AVG_MAX_N 345 /* number of full periods to produce LOAD_AVG_MAX */
-#endif
-#ifdef CONFIG_PELT_HALFLIFE_16
-#define LOAD_AVG_PERIOD 16
-#define LOAD_AVG_MAX 24152
-#define LOAD_AVG_MAX_N 517
-#endif
-#ifdef CONFIG_PELT_HALFLIFE_8
-#define LOAD_AVG_PERIOD 8
-#define LOAD_AVG_MAX 12337
-#define LOAD_AVG_MAX_N 603
-#endif
 
 /* Give new sched_entity start runnable values to heavy its load in infant time */
 void init_entity_runnable_average(struct sched_entity *se)
@@ -2626,6 +2608,7 @@ static inline void update_cfs_shares(struct sched_entity *se)
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
 #ifdef CONFIG_SMP
+<<<<<<< HEAD
 /* Precomputed fixed inverse multiplies for multiplication by y^n */
 static const u32 runnable_avg_yN_inv[] = {
 #ifdef CONFIG_PELT_HALFLIFE_32
@@ -2650,6 +2633,8 @@ static const u32 runnable_avg_yN_inv[] = {
 #endif
 };
 
+=======
+>>>>>>> 7fe3737... sched/fair: Move the PELT constants into a generated header
 /*
  * Approximate:
  *   val * y^n,    where y^32 ~= 0.5 (~1 scheduling period)
