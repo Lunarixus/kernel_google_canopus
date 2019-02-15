@@ -16,8 +16,7 @@
 #include <linux/slab.h>
 #include <trace/events/power.h>
 
-#include "sched.h"
-#include "tune.h"
+unsigned long boosted_cpu_util(int cpu);
 
 unsigned long boosted_cpu_util(int cpu);
 
@@ -191,33 +190,12 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 
 static inline bool use_pelt(void)
 {
-#ifdef CONFIG_SCHED_WALT
-	return (!sysctl_sched_use_walt_cpu_util || walt_disabled);
-#else
-	return true;
-#endif
-}
-
-static void sugov_get_util(unsigned long *util, unsigned long *max, u64 time)
-{
-	int cpu = smp_processor_id();
-	struct rq *rq = cpu_rq(cpu);
-	unsigned long max_cap, rt;
-	s64 delta;
+	unsigned long max_cap;
 
 	max_cap = arch_scale_cpu_capacity(NULL, cpu);
 
-	sched_avg_update(rq);
-	delta = time - rq->age_stamp;
-	if (unlikely(delta < 0))
-		delta = 0;
-	rt = div64_u64(rq->rt_avg, sched_avg_period() + delta);
-	rt = (rt * max_cap) >> SCHED_CAPACITY_SHIFT;
-
 	*util = boosted_cpu_util(cpu);
-	if (likely(use_pelt()))
-		*util = min((*util + rt), max_cap);
-
+	*util = min(*util, max_cap);
 	*max = max_cap;
 }
 
