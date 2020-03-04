@@ -8,7 +8,11 @@ static char new_command_line[COMMAND_LINE_SIZE];
 
 static int cmdline_proc_show(struct seq_file *m, void *v)
 {
+#ifdef CONFIG_PATCH_CMDLINE
 	seq_printf(m, "%s\n", new_command_line);
+#else
+	seq_printf(m, "%s\n", saved_command_line);
+#endif
 	return 0;
 }
 
