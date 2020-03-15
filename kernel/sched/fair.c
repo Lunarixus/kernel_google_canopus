@@ -2667,7 +2667,6 @@ u32 __accumulate_sum(u64 periods, u32 period_contrib, u32 remainder)
 	if (likely(periods <= LOAD_AVG_PERIOD)) {
 		c2 = runnable_avg_yN_sum[periods];
 	} else {
-		c2 = __accumulated_sum_N32[periods/LOAD_AVG_PERIOD];
 		periods %= LOAD_AVG_PERIOD;
 		c2 = decay_load(c2, periods);
 		c2 += runnable_avg_yN_sum[periods];
