@@ -972,7 +972,6 @@ config PELT_UTIL_HALFLIFE_8
 endchoice
 
 endmenu # FAIR Scheduler tunables"
->>>>>>> 813e6a1... FROMLIST: sched/fair: add support to tune PELT ramp/decay timings
 
 #
 # For architectures that want to enable the support for NUMA-affine scheduler

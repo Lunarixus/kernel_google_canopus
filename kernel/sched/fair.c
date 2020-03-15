@@ -2608,38 +2608,11 @@ static inline void update_cfs_shares(struct sched_entity *se)
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
 #ifdef CONFIG_SMP
-<<<<<<< HEAD
-/* Precomputed fixed inverse multiplies for multiplication by y^n */
-static const u32 runnable_avg_yN_inv[] = {
-#ifdef CONFIG_PELT_HALFLIFE_32
-	0xffffffff, 0xfa83b2da, 0xf5257d14, 0xefe4b99a, 
-	0xeac0c6e6, 0xe5b906e6, 0xe0ccdeeb, 0xdbfbb796, 
-	0xd744fcc9, 0xd2a81d91, 0xce248c14, 0xc9b9bd85, 
-	0xc5672a10, 0xc12c4cc9, 0xbd08a39e, 0xb8fbaf46, 
-	0xb504f333, 0xb123f581, 0xad583ee9, 0xa9a15ab4, 
-	0xa5fed6a9, 0xa2704302, 0x9ef5325f, 0x9b8d39b9, 
-	0x9837f050, 0x94f4efa8, 0x91c3d373, 0x8ea4398a, 
-	0x8b95c1e3, 0x88980e80, 0x85aac367, 0x82cd8698, 
-#endif
-#ifdef CONFIG_PELT_HALFLIFE_16
-	0xffffffff, 0xf5257d14, 0xeac0c6e6, 0xe0ccdeeb, 
-	0xd744fcc9, 0xce248c14, 0xc5672a10, 0xbd08a39e, 
-	0xb504f333, 0xad583ee9, 0xa5fed6a9, 0x9ef5325f, 
-	0x9837f050, 0x91c3d373, 0x8b95c1e3, 0x85aac367, 
-#endif
-#ifdef CONFIG_PELT_HALFLIFE_8
-	0xffffffff, 0xeac0c6e6, 0xd744fcc9, 0xc5672a10, 
-	0xb504f333, 0xa5fed6a9, 0x9837f050, 0x8b95c1e3, 
-#endif
-};
-
-=======
->>>>>>> 7fe3737... sched/fair: Move the PELT constants into a generated header
 /*
  * Approximate:
  *   val * y^n,    where y^32 ~= 0.5 (~1 scheduling period)
  */
-static u64 decay_load(u64 val, u64 n)
+static __always_inline u64 decay_load(u64 val, u64 n)
 {
 	unsigned int local_n;
 
@@ -2665,27 +2638,26 @@ static u64 decay_load(u64 val, u64 n)
 	return val;
 }
 
-static u32 __accumulate_pelt_segments(u64 periods, u32 d1, u32 d3)
+/*
+ * For updates fully spanning n periods, the contribution to runnable
+ * average will be: \Sum 1024*y^n
+ *
+ * We can compute this reasonably efficiently by combining:
+ *   y^PERIOD = 1/2 with precomputed \Sum 1024*y^n {for  n <PERIOD}
+ */
+static u32 __compute_runnable_contrib(u64 n)
 {
-	u32 c1, c2, c3 = d3; /* y^0 == 1 */
+	u32 contrib = 0;
 
-	/*
-	 * c1 = d1 y^p
-	 */
-	c1 = decay_load((u64)d1, periods);
+	if (likely(n <= LOAD_AVG_PERIOD))
+		return runnable_avg_yN_sum[n];
+	else if (unlikely(n >= LOAD_AVG_MAX_N))
+		return LOAD_AVG_MAX;
 
-	/*
-	 *            p-1
-	 * c2 = 1024 \Sum y^n
-	 *            n=1
-	 *
-	 *              inf        inf
-	 *    = 1024 ( \Sum y^n - \Sum y^n - y^0 )
-	 *              n=0        n=p
-	 */
-	c2 = LOAD_AVG_MAX - decay_load(LOAD_AVG_MAX, periods) - 1024;
-
-	return c1 + c2 + c3;
+	/* Since n < LOAD_AVG_MAX_N, n/LOAD_AVG_PERIOD < 11 */
+	n %= LOAD_AVG_PERIOD;
+	contrib = decay_load(contrib, n);
+	return contrib + runnable_avg_yN_sum[n];
 }
 
 #if (SCHED_LOAD_SHIFT - SCHED_LOAD_RESOLUTION) != 10 || SCHED_CAPACITY_SHIFT != 10
@@ -2721,73 +2693,6 @@ static inline void cfs_se_util_change(struct sched_avg *avg)
 }
 
 /*
- * Accumulate the three separate parts of the sum; d1 the remainder
- * of the last (incomplete) period, d2 the span of full periods and d3
- * the remainder of the (incomplete) current period.
- *
- *           d1          d2           d3
- *           ^           ^            ^
- *           |           |            |
- *         |<->|<----------------->|<--->|
- * ... |---x---|------| ... |------|-----x (now)
- *
- *                           p-1
- * u' = (u + d1) y^p + 1024 \Sum y^n + d3 y^0
- *                           n=1
- *
- *    = u y^p +					(Step 1)
- *
- *                     p-1
- *      d1 y^p + 1024 \Sum y^n + d3 y^0		(Step 2)
- *                     n=1
- */
-static __always_inline u32
-accumulate_sum(u64 delta, int cpu, struct sched_avg *sa,
-	       unsigned long weight, int running, struct cfs_rq *cfs_rq)
-{
-	unsigned long scale_freq, scale_cpu;
-	u32 contrib = (u32)delta; /* p == 0 -> delta < 1024 */
-	u64 periods;
-
-	scale_freq = arch_scale_freq_capacity(NULL, cpu);
-	scale_cpu = arch_scale_cpu_capacity(NULL, cpu);
-
-	delta += sa->period_contrib;
-	periods = delta / 1024; /* A period is 1024us (~1ms) */
-
-	/*
-	 * Step 1: decay old *_sum if we crossed period boundaries.
-	 */
-	if (periods) {
-		sa->load_sum = decay_load(sa->load_sum, periods);
-		if (cfs_rq) {
-			cfs_rq->runnable_load_sum =
-				decay_load(cfs_rq->runnable_load_sum, periods);
-		}
-		sa->util_sum = decay_load((u64)(sa->util_sum), periods);
-
-		/*
-		 * Step 2
-		 */
-		delta %= 1024;
-		contrib = __accumulate_pelt_segments(periods,
-				1024 - sa->period_contrib, delta);
-	}
-	sa->period_contrib = delta;
-
-	contrib = cap_scale(contrib, scale_freq);
-	if (weight) {
-		sa->load_sum += weight * contrib;
-		if (cfs_rq)
-			cfs_rq->runnable_load_sum += weight * contrib;
-	}
-	if (running)
-		sa->util_sum += contrib * scale_cpu;
-
-	return periods;
-}
-
-/*
  * We can represent the historical contribution to runnable average as the
  * coefficients of a geometric series.  To do this we sub-divide our runnable
  * history into segments of approximately 1ms (1024us); label the segment that
@@ -2819,7 +2724,10 @@ static __always_inline int
 ___update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		  unsigned long weight, int running, struct cfs_rq *cfs_rq)
 {
-	u64 delta;
+	u64 delta, scaled_delta, periods;
+	u32 contrib;
+	unsigned int delta_w, scaled_delta_w, decayed = 0;
+	unsigned long scale_freq, scale_cpu;
 
 	delta = now - sa->last_update_time;
 	/*
@@ -2906,28 +2814,17 @@ ___update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 
 	sa->period_contrib += delta;
 
-	/*
-	 * Now we know we crossed measurement unit boundaries. The *_avg
-	 * accrues by two steps:
-	 *
-	 * Step 1: accumulate *_sum since last_update_time. If we haven't
-	 * crossed period boundaries, finish.
-	 */
-	if (!accumulate_sum(delta, cpu, sa, weight, running, cfs_rq))
-		return 0;
-
-	/*
-	 * Step 2: update *_avg.
-	 */
-	sa->load_avg = div_u64(sa->load_sum, LOAD_AVG_MAX);
-	if (cfs_rq) {
-		cfs_rq->runnable_load_avg =
-			div_u64(cfs_rq->runnable_load_sum, LOAD_AVG_MAX);
+	if (decayed) {
+		sa->load_avg = div_u64(sa->load_sum, LOAD_AVG_MAX);
+		if (cfs_rq) {
+			cfs_rq->runnable_load_avg =
+				div_u64(cfs_rq->runnable_load_sum, LOAD_AVG_MAX);
+		}
+		sa->util_avg = sa->util_sum / LOAD_AVG_MAX;
 	}
-	sa->util_avg = sa->util_sum / LOAD_AVG_MAX;
 
 	cfs_se_util_change(sa);
-	return 1;
+	return decayed;
 }
 
 static int
