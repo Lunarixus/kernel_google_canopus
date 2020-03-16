@@ -6421,7 +6421,6 @@ static inline unsigned long cpu_util_freq(int cpu)
 #else
 	return cpu_util(cpu);
 #endif
->>>>>>> 534020f... sched/fair: Clean cpu_util_freq()
 }
 
 static int start_cpu(bool boosted)
