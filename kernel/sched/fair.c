@@ -3220,6 +3220,12 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq, bool update_freq)
 	return decayed || removed;
 }
 
+unsigned long sched_get_rt_rq_util(int cpu)
+{
+	struct rt_rq *rt_rq = &(cpu_rq(cpu)->rt);
+	return rt_rq->avg.util_avg;
+}
+
 /*
  * Optional action to be done while updating the load average
  */
